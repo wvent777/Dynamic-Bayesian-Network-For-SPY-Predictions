@@ -1,0 +1,54 @@
+network "unnamedBN" {
+// written by aGrUM 1.3.2
+}
+
+variable SP2 {
+   type discrete[2] {0, 1};
+}
+
+variable SP1 {
+   type discrete[2] {0, 1};
+}
+
+variable VX1 {
+   type discrete[2] {0, 1};
+}
+
+variable CP1 {
+   type discrete[2] {0, 1};
+}
+
+variable UR1 {
+   type discrete[2] {0, 1};
+}
+
+variable LB1 {
+   type discrete[2] {0, 1};
+}
+
+probability (SP2) {
+   default 0.566852 0.433148;
+}
+probability (SP1 | SP2) {
+   (0) 0.989724 0.0102756;
+   (1) 0.0140587 0.985941;
+}
+probability (VX1 | SP2) {
+   (0) 0.539468 0.460532;
+   (1) 0.757946 0.242054;
+}
+probability (CP1 | SP2) {
+   (0) 0.850537 0.149463;
+   (1) 0.0122249 0.987775;
+}
+probability (UR1 | SP2, CP1) {
+   (0, 0) 0.252059 0.747941;
+   (1, 0) 1 0;
+   (0, 1) 0.934375 0.065625;
+   (1, 1) 0.87005 0.12995;
+}
+probability (LB1 | SP2) {
+   (0) 0.783746 0.216254;
+   (1) 0.577628 0.422372;
+}
+

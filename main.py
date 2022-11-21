@@ -1,0 +1,151 @@
+import datetime
+import pyAgrum as gum
+import pyAgrum.lib.image as gumimage
+import functools as ft
+import matplotlib as plt
+import pyAgrum.lib.dynamicBN as gdyn
+import pandas as pd
+import numpy as np
+import yfinance as yf
+
+# S&P Data from Yahoo Finance
+# SP2 - Potential Future S&P State (i.e. "up" or "down")
+# SP1 - S&P State in current period
+# Rest of Data from Federal Reserve Economic Data Repository
+# VX1 - Implied Volatility in current period
+# CP1 - Consumer Price index in current Period - Updated Monthly
+# UR1 - Unemployment Rate in current Period
+# LB1 - Interest Rates in current period
+
+# Looking at data from 1-1-2007 to 1-1-2022
+# Import S&P Data from Yahoo Finance (^GSPC) is the symbol
+# Loaded in as Dataframe
+# Adjusted Close price takes into consideration other factors such as dividends
+# stock splits, and new stock offerings
+
+start = datetime.datetime(2007, 1, 1)
+end = datetime.datetime(2022, 1, 1)
+snp = yf.download('^GSPC', start=start, end=end)
+snp.index = snp.index.strftime('%Y-%m-%d')
+snp.to_csv('S&P_data.csv')
+snp_df = pd.read_csv('S&P_data.csv')
+snp_df.rename(columns={"Date": "DATE"}, inplace=True)
+
+# print(type(snp_df))
+# print(snp_df.head())
+# print(snp_df.info())
+
+cp_df = pd.read_csv("Consumer_Price_2007_2022.csv")
+vix_df = pd.read_csv("VIX_2007_2022.csv")
+ur_df = pd.read_csv("UR_2007_2022.csv")
+fed_df = pd.read_csv("FEDFUNDS_2007_2022.csv")
+
+# Testing how I wanted to merge the data
+# merge= pd.merge(snp_df,cp_df, how="outer", on="DATE")
+# print(merge.info())
+
+# Merging the Data
+dfs = [cp_df, snp_df, vix_df, ur_df, fed_df]
+merged = ft.reduce(lambda left, right: pd.merge(left, right, how="outer", on='DATE'), dfs)
+print(merged)
+print(merged.info)
+merged.rename(columns={'CPALTT01USM661S': 'Consumer Price Index', 'VIXCLS': 'VIX', 'UNRATE': 'Unemployment Rate',
+                       'FEDFUNDS': 'Federal Interest Rates'}, inplace=True)
+merged.sort_values(by='DATE', inplace=True)
+
+# filling in Nan Values for the Market Data Given the Month
+# Forward Fill - Since assuming CPI,UR, and Interest Rates remain same throughout that period
+
+merged['Consumer Price Index'].fillna(method='ffill', inplace=True)
+merged['Unemployment Rate'].fillna(method='ffill', inplace=True)
+merged['Federal Interest Rates'].fillna(method='ffill', inplace=True)
+merged.to_csv('Merged_data.csv')
+
+# Check for null values
+print(np.sum(merged.isnull().sum()))
+null_col = merged.isnull().sum()
+print(null_col)
+
+# Drop Null Values
+clean_df = merged.dropna()
+clean_df = clean_df.reset_index(drop=True)
+clean_df.to_csv('clean_data.csv')
+
+# Check again if null values
+null_col_2 = clean_df.isnull().sum()
+print(null_col_2)
+
+final_df = pd.DataFrame()
+final_df['SP2'] = clean_df["Adj Close"].astype(float)
+final_df['SP1'] = clean_df["Open"].astype(float)
+final_df['CP1'] = clean_df["Consumer Price Index"].astype(float)
+final_df['VX1'] = clean_df["VIX"].astype(float)
+final_df['UR1'] = clean_df["Unemployment Rate"].astype(float)
+final_df['LB1'] = clean_df["Federal Interest Rates"].astype(float)
+final_df.to_csv('S&P Data Final.csv', index=False)
+print(final_df.shape)
+
+# Discretizing the Data
+# Have To figure out how I want to discretize the data
+# Since the Bayesian Network takes in binary values
+# For now just being discretized based on column averages
+# Ideally would want to find a method to dynamically
+# discretized based on the average for example 5 tradings days
+nodes_names = ['SP2', 'SP1', 'VX1', 'CP1', 'UR1', 'LB1']
+discrete_df = pd.DataFrame()
+
+for name in nodes_names:
+    discrete_df[name] = pd.cut(final_df[name], bins=[final_df[name].min(), final_df[name].mean(),
+                                                     final_df[name].max()], include_lowest=True, labels=[0, 1])
+
+print(discrete_df)
+
+# Creating the Bayesian Network
+bn = gum.BayesNet("S&P Bayesian Network")
+# sp2 = bn.add(gum.LabelizedVariable("SP2", "S&P Future State", 2))
+# print(sp2)
+# P(SP2, SP1, VX1, CP1, UR1, LB1) = P(SP1|SP2)P(VX1|SP2)P(CP1|SP2)P(LB1|SP2)P(UR1|SP2,CP1)P(SP2)
+
+sp2, sp1, vx1, cp1, ur1, lb1 = [bn.add(name, 2) for name in nodes_names]
+links = [(sp2, sp1), (sp2, vx1), (sp2, ur1), (sp2, lb1), (sp2, cp1), (cp1, ur1)]
+for link in links:
+    bn.addArc(*link)
+
+# Exports Network as a Jpeg
+gumimage.export(bn, "S&P_Network.jpg",
+                nodeColor={'SP1': 0.5,
+                           'SP2': 0.5,
+                           'VX1': 0.5,
+                           'CP1': 0.5,
+                           'UR1': 0.5,
+                           'LB1': 0.5})
+
+# Set up Learner
+learner = gum.BNLearner(discrete_df, bn)
+learner.setInitialDAG(bn.dag())
+bn2 = learner.learnParameters()
+gumimage.export(bn2, "S&P_Network_Learned.jpg",
+                nodeColor={'SP1': 0.5,
+                           'SP2': 0.5,
+                           'VX1': 0.5,
+                           'CP1': 0.5,
+                           'UR1': 0.5,
+                           'LB1': 0.5})
+
+# Save learned network
+gum.saveBN(bn2, "S&P_Network.bif")
+
+# Printing Network Probabilities
+with open("S&P_Network.bif", "r") as out:
+    print(out.read())
+
+# export inferences from network
+gumimage.exportInference(bn2, "test_export.pdf")
+
+# Still need to:
+# Think about how to incorporate time
+# for the dynamic bayesian network and how it would
+# change the current architecture or maybe need to design new one
+# Discretize the data in a better way than just column average
+# hopefully something like the average of every 5 trading days
+# Apply the model to future queries and test performance

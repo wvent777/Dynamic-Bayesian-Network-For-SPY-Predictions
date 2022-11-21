@@ -1,0 +1,13 @@
+References
+
+Consumer Prices Index - Seasonality Adjusted
+https://fred.stlouisfed.org/series/CPALTT01USM661S
+
+CBOE Volatility Index - Not Seasonality Adjusted
+https://fred.stlouisfed.org/series/VIXCLS#0
+
+Unemployment Rate - Percentage, Seasonally Adjusted
+https://fred.stlouisfed.org/series/UNRATE
+
+Federal Funds Effective Rate (Interest Rates) - Percent, Not Seasonally Adjusted
+https://fred.stlouisfed.org/series/FEDFUNDS#
